@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -47,19 +48,21 @@ const bookingSchema = new mongoose.Schema({
   },
   createdAt: { type: Date, default: Date.now },
 });
+
 const Booking = mongoose.model("Booking", bookingSchema);
 
 // ==================== SERVICE SCHEMA ====================
 const serviceSchema = new mongoose.Schema({
   name: { type: String, required: true },
   about: { type: String, required: true },
-  balance: { type: String, required: true }, // e.g. "BDT 4,500"
-  picture: { type: String, required: true }, // image URL
+  balance: { type: String, required: true },
+  picture: { type: String, required: true },
   category: { type: String, default: "General" },
   duration: { type: String, default: "Flexible" },
   location: { type: String, default: "Bangladesh" },
   createdAt: { type: Date, default: Date.now },
 });
+
 const Service = mongoose.model("Service", serviceSchema);
 
 // ==================== HEALTH CHECK ====================
@@ -69,11 +72,38 @@ app.get("/health", (req, res) => {
 
 // ==================== BOOKING ROUTES ====================
 
-// Create booking
+// Create booking with duplicate prevention
 app.post("/api/bookings", async (req, res) => {
   try {
+    const { userId, serviceId } = req.body;
+
+    if (!userId || !serviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and serviceId are required",
+      });
+    }
+
+    // Check if user already has a booking for this service
+    const existingBooking = await Booking.findOne({
+      userId: userId,
+      serviceId: serviceId,
+    });
+
+    if (existingBooking) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "You have already requested this tour. Only one request per service is allowed.",
+        existingBookingId: existingBooking._id,
+        status: existingBooking.status,
+      });
+    }
+
+    // Create new booking
     const booking = new Booking(req.body);
     const saved = await booking.save();
+
     res.status(201).json({
       success: true,
       message: "Booking request submitted successfully!",
@@ -81,13 +111,11 @@ app.post("/api/bookings", async (req, res) => {
     });
   } catch (error) {
     console.error("Booking Error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to create booking",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create booking",
+      error: error.message,
+    });
   }
 });
 
@@ -137,9 +165,8 @@ app.delete("/api/admin/bookings/:id", async (req, res) => {
   }
 });
 
-// ==================== ADMIN — SERVICE ROUTES (CRUD) ====================
+// ==================== ADMIN — SERVICE ROUTES ====================
 
-// GET all services
 app.get("/api/services", async (req, res) => {
   try {
     const services = await Service.find().sort({ createdAt: -1 });
@@ -149,7 +176,6 @@ app.get("/api/services", async (req, res) => {
   }
 });
 
-// GET single service
 app.get("/api/services/:id", async (req, res) => {
   try {
     const service = await Service.findById(req.params.id);
@@ -160,7 +186,6 @@ app.get("/api/services/:id", async (req, res) => {
   }
 });
 
-// CREATE service
 app.post("/api/admin/services", async (req, res) => {
   try {
     const service = new Service(req.body);
@@ -171,7 +196,6 @@ app.post("/api/admin/services", async (req, res) => {
   }
 });
 
-// UPDATE service
 app.patch("/api/admin/services/:id", async (req, res) => {
   try {
     const updated = await Service.findByIdAndUpdate(req.params.id, req.body, {
@@ -188,7 +212,6 @@ app.patch("/api/admin/services/:id", async (req, res) => {
   }
 });
 
-// DELETE service
 app.delete("/api/admin/services/:id", async (req, res) => {
   try {
     await Service.findByIdAndDelete(req.params.id);
