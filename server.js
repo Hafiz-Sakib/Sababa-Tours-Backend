@@ -12,7 +12,7 @@ app.use(
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:5174",
-      "https://sababa-tours.vercel.app", // ← Your frontend
+      "https://sababa-tours.vercel.app",
       "https://sababa-tours-backend.onrender.com",
     ],
     credentials: true,
@@ -21,15 +21,13 @@ app.use(
 
 app.use(express.json());
 
-// ==================== DATABASE ====================
+// ==================== DATABASE CONNECTION ====================
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected Successfully"))
-  .catch((err) => {
-    console.error("❌ MongoDB Connection Error:", err.message);
-  });
+  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
-// Booking Schema
+// ==================== BOOKING SCHEMA (Updated) ====================
 const bookingSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   userEmail: { type: String, required: true },
@@ -43,12 +41,17 @@ const bookingSchema = new mongoose.Schema({
   preferredDate: { type: Date, required: true },
   totalAmount: { type: Number, required: true },
 
+  // NEW FIELDS
+  phoneNumber: { type: String, required: true },
+  address: { type: String, required: true },
+
+  notes: String,
+
   status: {
     type: String,
     default: "pending",
     enum: ["pending", "confirmed", "cancelled"],
   },
-  notes: String,
   createdAt: { type: Date, default: Date.now },
 });
 
@@ -61,10 +64,10 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", message: "Backend is running" });
 });
 
-// Create Booking
+// Create New Booking
 app.post("/api/bookings", async (req, res) => {
   try {
-    console.log("Received booking data:", req.body); // For debugging
+    console.log("Received booking:", req.body);
 
     const booking = new Booking(req.body);
     const savedBooking = await booking.save();
@@ -77,7 +80,7 @@ app.post("/api/bookings", async (req, res) => {
       bookingId: savedBooking._id,
     });
   } catch (error) {
-    console.error("Booking Creation Error:", error);
+    console.error("Booking Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create booking",
@@ -86,7 +89,7 @@ app.post("/api/bookings", async (req, res) => {
   }
 });
 
-// Get User Bookings
+// Get User's Bookings
 app.get("/api/bookings/user/:userId", async (req, res) => {
   try {
     const bookings = await Booking.find({ userId: req.params.userId }).sort({
@@ -99,7 +102,8 @@ app.get("/api/bookings/user/:userId", async (req, res) => {
   }
 });
 
-// Admin Routes (unchanged)
+// ==================== ADMIN ROUTES ====================
+
 app.get("/api/admin/bookings", async (req, res) => {
   try {
     const bookings = await Booking.find().sort({ createdAt: -1 });
