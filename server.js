@@ -18,7 +18,6 @@ app.use(
     credentials: true,
   }),
 );
-
 app.use(express.json());
 
 // ==================== DATABASE CONNECTION ====================
@@ -27,26 +26,20 @@ mongoose
   .then(() => console.log("✅ MongoDB Connected Successfully"))
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
-// ==================== BOOKING SCHEMA (Updated) ====================
+// ==================== BOOKING SCHEMA ====================
 const bookingSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   userEmail: { type: String, required: true },
   userName: String,
-
   serviceId: String,
   serviceName: { type: String, required: true },
   serviceBalance: String,
-
   travelers: { type: Number, required: true, min: 1 },
   preferredDate: { type: Date, required: true },
   totalAmount: { type: Number, required: true },
-
-  // NEW FIELDS
   phoneNumber: { type: String, required: true },
   address: { type: String, required: true },
-
   notes: String,
-
   status: {
     type: String,
     default: "pending",
@@ -54,42 +47,51 @@ const bookingSchema = new mongoose.Schema({
   },
   createdAt: { type: Date, default: Date.now },
 });
-
 const Booking = mongoose.model("Booking", bookingSchema);
 
-// ==================== ROUTES ====================
+// ==================== SERVICE SCHEMA ====================
+const serviceSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  about: { type: String, required: true },
+  balance: { type: String, required: true }, // e.g. "BDT 4,500"
+  picture: { type: String, required: true }, // image URL
+  category: { type: String, default: "General" },
+  duration: { type: String, default: "Flexible" },
+  location: { type: String, default: "Bangladesh" },
+  createdAt: { type: Date, default: Date.now },
+});
+const Service = mongoose.model("Service", serviceSchema);
 
-// Health Check
+// ==================== HEALTH CHECK ====================
 app.get("/health", (req, res) => {
   res.json({ status: "OK", message: "Backend is running" });
 });
 
-// Create New Booking
+// ==================== BOOKING ROUTES ====================
+
+// Create booking
 app.post("/api/bookings", async (req, res) => {
   try {
-    console.log("Received booking:", req.body);
-
     const booking = new Booking(req.body);
-    const savedBooking = await booking.save();
-
-    console.log("Booking saved successfully:", savedBooking._id);
-
+    const saved = await booking.save();
     res.status(201).json({
       success: true,
       message: "Booking request submitted successfully!",
-      bookingId: savedBooking._id,
+      bookingId: saved._id,
     });
   } catch (error) {
     console.error("Booking Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to create booking",
-      error: error.message,
-    });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to create booking",
+        error: error.message,
+      });
   }
 });
 
-// Get User's Bookings
+// Get user's bookings
 app.get("/api/bookings/user/:userId", async (req, res) => {
   try {
     const bookings = await Booking.find({ userId: req.params.userId }).sort({
@@ -97,12 +99,11 @@ app.get("/api/bookings/user/:userId", async (req, res) => {
     });
     res.json(bookings);
   } catch (error) {
-    console.error(error);
     res.status(500).json({ message: error.message });
   }
 });
 
-// ==================== ADMIN ROUTES ====================
+// ==================== ADMIN — BOOKING ROUTES ====================
 
 app.get("/api/admin/bookings", async (req, res) => {
   try {
@@ -136,7 +137,68 @@ app.delete("/api/admin/bookings/:id", async (req, res) => {
   }
 });
 
-// Start Server
+// ==================== ADMIN — SERVICE ROUTES (CRUD) ====================
+
+// GET all services
+app.get("/api/services", async (req, res) => {
+  try {
+    const services = await Service.find().sort({ createdAt: -1 });
+    res.json(services);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET single service
+app.get("/api/services/:id", async (req, res) => {
+  try {
+    const service = await Service.findById(req.params.id);
+    if (!service) return res.status(404).json({ message: "Service not found" });
+    res.json(service);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// CREATE service
+app.post("/api/admin/services", async (req, res) => {
+  try {
+    const service = new Service(req.body);
+    const saved = await service.save();
+    res.status(201).json({ success: true, service: saved });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// UPDATE service
+app.patch("/api/admin/services/:id", async (req, res) => {
+  try {
+    const updated = await Service.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    if (!updated)
+      return res
+        .status(404)
+        .json({ success: false, message: "Service not found" });
+    res.json({ success: true, service: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE service
+app.delete("/api/admin/services/:id", async (req, res) => {
+  try {
+    await Service.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: "Service deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== START SERVER ====================
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
