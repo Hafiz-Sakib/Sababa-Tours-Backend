@@ -4,23 +4,34 @@ const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
-// const PORT = process.env.PORT || 5000;
-// Middleware
+
+// ==================== MIDDLEWARE ====================
+
+// CORS - Updated for both local + production
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://localhost:5173"], // Add your frontend URLs
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:5174", // in case you use different port
+      "https://sababa-tours-backend.onrender.com", // your backend
+      "https://sababa-tours.vercel.app/",
+      // Example: "https://your-frontend-name.vercel.app"
+    ],
     credentials: true,
   }),
 );
+
 app.use(express.json());
 
-// MongoDB Connection
+// ==================== MONGO CONNECTION ====================
+
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB Connected Successfully"))
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
-// Booking Schema
+// Booking Schema (unchanged)
 const bookingSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   userEmail: { type: String, required: true },
@@ -53,13 +64,15 @@ app.post("/api/bookings", async (req, res) => {
     const booking = new Booking(req.body);
     const savedBooking = await booking.save();
 
+    console.log("New booking created:", savedBooking._id);
+
     res.status(201).json({
       success: true,
       message: "Booking request submitted successfully!",
       bookingId: savedBooking._id,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Booking Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create booking",
@@ -76,13 +89,9 @@ app.get("/api/bookings/user/:userId", async (req, res) => {
     });
     res.json(bookings);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
 
 // ==================== ADMIN ROUTES ====================
@@ -93,6 +102,7 @@ app.get("/api/admin/bookings", async (req, res) => {
     const bookings = await Booking.find().sort({ createdAt: -1 });
     res.json(bookings);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -108,6 +118,7 @@ app.patch("/api/admin/bookings/:id", async (req, res) => {
     );
     res.json({ success: true, booking: updated });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -118,6 +129,21 @@ app.delete("/api/admin/bookings/:id", async (req, res) => {
     await Booking.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: "Booking deleted" });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// Health Check Route (Useful for Render)
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "OK", uptime: process.uptime() });
+});
+
+// ==================== SERVER START ====================
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Backend URL: https://sababa-tours-backend.onrender.com`);
 });
