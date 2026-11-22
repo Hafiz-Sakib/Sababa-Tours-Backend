@@ -1,0 +1,18 @@
+1) .gitignore ar .github folder GitHub browser upload e jay na (hidden file).
+   GitHub repo > Add file > Create new file:
+     - name: .gitignore         -> paste from _copy-these-if-hidden-files-missing/gitignore.txt
+     - name: .github/workflows/keep-alive.yml
+                                -> paste from _copy-these-if-hidden-files-missing/keep-alive.yml.txt
+   (name e "/" likhle folder auto toiri hoy)
+
+2) node_modules ar .env repo theke soranor jonno local clone e:
+     git pull
+     git rm -r --cached node_modules .env
+     git add .gitignore .github server.js
+     git commit -m "remove node_modules and .env, add keep-alive workflow"
+     git push
+
+3) MongoDB Atlas e database user er password change koro (.env public chhilo),
+   tarpor Render > Environment e MONGO_URI update koro.
+
+4) GitHub > Actions > Keep Render Awake > Run workflow diye test koro.
