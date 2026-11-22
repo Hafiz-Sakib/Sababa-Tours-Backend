@@ -67,7 +67,12 @@ const Service = mongoose.model("Service", serviceSchema);
 
 // ==================== HEALTH CHECK ====================
 app.get("/health", (req, res) => {
-  res.json({ status: "OK", message: "Backend is running" });
+  res.status(200).json({
+    status: "OK",
+    message: "Backend is running",
+    uptime: Math.round(process.uptime()),
+    time: new Date().toISOString(),
+  });
 });
 
 // ==================== BOOKING ROUTES ====================
