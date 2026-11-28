@@ -135,7 +135,7 @@ const HOLD_HOURS = 72;
 // true  = advance is asked only when that trip date is still free in the schedule
 // false = advance is asked on every confirmation
 const ADVANCE_ONLY_WHEN_SCHEDULE_FREE = true;
-const PAY_METHODS = ["bKash", "Nagad", "Card"];
+const PAY_METHODS = ["bKash", "Nagad", "Bank", "Card"];
 
 const advanceFor = (total) => Math.ceil((Number(total) * ADVANCE_PERCENT) / 100);
 
