@@ -103,12 +103,13 @@ Authorization: Bearer <firebase-id-token>
 ### Customer (signed in)
 | Method | Path | Description |
 | --- | --- | --- |
-| POST | `/api/bookings` | Create a booking request (status `pending`) |
+| POST | `/api/bookings` | Create a booking request (status `pending`). Also needs `category`, `traveler`, `hotel`, `flight` (see below) |
 | GET | `/api/bookings/user/:userId` | My bookings |
 | PATCH | `/api/bookings/:id` | Edit my booking (until 5 days before the trip; a confirmed one returns to `pending`) |
 | PATCH | `/api/bookings/:id/cancel` | Cancel my booking (same window) |
 | POST | `/api/bookings/:id/pay` | Pay `{ amount, method, ref?, brand?, last4?, account? }` |
 | DELETE | `/api/bookings/:id` | Delete my booking (only after it is cancelled) |
+| GET | `/api/payments/mine` | My payment history (from the payment ledger) |
 
 `method` is one of `bKash`, `Nagad`, `Card`. `amount` must be a whole number from 1 up to the remaining balance.
 
@@ -116,6 +117,7 @@ Authorization: Bearer <firebase-id-token>
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/api/admin/bookings` | All bookings |
+| GET | `/api/admin/payments` | Payment ledger, newest first (`?bookingId=` / `?userId=` to filter) |
 | PATCH | `/api/admin/bookings/:id` | Change status (`pending` / `confirmed` / `cancelled`) or edit details |
 | DELETE | `/api/admin/bookings/:id` | Delete any booking |
 | POST | `/api/admin/services` | Create a package |
@@ -147,7 +149,16 @@ Payments made so far are kept on a cancelled booking so a refund can be arranged
 | `status` | `pending`, `awaiting_payment`, `confirmed`, `cancelled` |
 | `advanceAmount`, `payDeadline`, `confirmedAt` | Set when the admin confirms |
 | `cancelReason` | `advance_not_paid`, `customer`, `admin` |
-| `paidAmount`, `payments[]` | Each payment: `amount`, `method`, `ref`, `brand`, `last4`, `account`, `paidAt` |
+| `paidAmount`, `payments[]` | Each payment: `amount`, `method`, `ref`, `brand`, `last4`, `account`, `currency`, `status`, `payerName`, `payerEmail`, `balanceAfter`, `paidAt` |
+| `category` | `Family`, `Couple`, `Friends`, `Solo`, `Corporate` |
+| `traveler` | `fullName` (lead traveler), `nationality`, `children` (adults = travelers − children), `emergencyName`, `emergencyPhone` |
+| `hotel` | `needed` (false = own stay); when true: `roomType` (Standard / Deluxe / Family Suite / Luxury Suite), `rooms`, `bedType`, `mealPlan`, `nights`, `requests`. Check-in is the trip date |
+| `flight` | `mode`: `own` (`airline`, `flightNo`, `arrivalTime`, `departFrom`, optional `returnFlightNo` / `returnDate`), `arrange` (`departFrom`, `cabin`, `roundTrip`) or `none` |
+
+All of the above is validated on the server in `extras.js`. Hotel and flight choices are requests: they do **not** change the package total, and the travel desk confirms rooms and fares with the customer. Bookings made before these fields existed still load; the fields are simply empty.
+
+### Payment data
+Every payment is saved twice: inside the booking (`payments[]`) and as its own document in the `payments` collection (a ledger that stays even if the booking is later deleted). Only what the receipt shows is kept: method, reference, card brand + last four digits, masked wallet number, amount and balance. **Full card numbers, CVC and wallet PINs are never sent to or stored by the server.** This build records payments made through the demo payment flow; connect a real payment gateway before taking real money.
 
 ---
 
@@ -155,7 +166,8 @@ Payments made so far are kept on a cancelled booking so a refund can be arranged
 
 ```bash
 Sababa-Tours-Backend-main/
-├── server.js                   # app, models, auth, routes, expiry sweep
+├── server.js                   # app, models (Booking, Payment, Service), auth, routes, expiry sweep
+├── extras.js                   # validation of category / traveler / hotel / flight
 ├── package.json
 ├── .env.example
 ├── assets/homepage.png         # README screenshot
@@ -181,3 +193,7 @@ Sababa-Tours-Backend-main/
 - **Frontend repo:** Sababa Tours (React) — set up first, it needs this API on port `5000` in development
 
 Built by **Hafiz Sakib** · [Portfolio](https://hafizsakib.vercel.app/)
+
+
+## Travel Blog
+New `blogs` collection, admin routes and a seed: see `seed/BLOG_GUIDE.md` (`npm run seed:blogs`).

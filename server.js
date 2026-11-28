@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const { createRemoteJWKSet, jwtVerify } = require("jose");
 require("dotenv").config();
+const { parseExtras, checkConsistency, CATEGORIES, ROOM_TYPES, BED_TYPES, MEAL_PLANS, FLIGHT_MODES, CABINS } = require("./extras");
 
 const app = express();
 
@@ -217,12 +218,43 @@ const bookingSchema = new mongoose.Schema({
   serviceId: String,
   serviceName: { type: String, required: true },
   serviceBalance: String,
+  servicePicture: String, // snapshot of the package picture + place, so My Bookings still shows them if the package is removed
+  serviceLocation: String,
   travelers: { type: Number, required: true, min: 1, max: MAX_TRAVELERS },
   preferredDate: { type: Date, required: true },
   totalAmount: { type: Number, required: true },
   phoneNumber: { type: String, required: true },
   address: { type: String, required: true },
   notes: String,
+  // ---- extra booking information (validated by extras.js) ----
+  category: { type: String, enum: CATEGORIES }, // Family | Couple | Friends | Solo | Corporate
+  traveler: {
+    fullName: String, // lead traveler
+    nationality: String,
+    children: { type: Number, default: 0 }, // adults = travelers - children
+    emergencyName: String,
+    emergencyPhone: String,
+  },
+  hotel: {
+    needed: Boolean, // false = the customer has their own stay
+    roomType: { type: String, enum: ROOM_TYPES },
+    rooms: Number,
+    bedType: { type: String, enum: BED_TYPES },
+    mealPlan: { type: String, enum: MEAL_PLANS },
+    nights: Number, // check-in = trip date, check-out = trip date + nights
+    requests: String,
+  },
+  flight: {
+    mode: { type: String, enum: FLIGHT_MODES }, // own | arrange | none
+    departFrom: String,
+    airline: String,
+    flightNo: String,
+    arrivalTime: String, // "HH:MM" at the destination
+    returnFlightNo: String,
+    returnDate: Date,
+    cabin: { type: String, enum: CABINS }, // when the desk arranges the flight
+    roundTrip: Boolean,
+  },
   status: {
     type: String,
     default: "pending",
@@ -243,6 +275,11 @@ const bookingSchema = new mongoose.Schema({
       brand: String, // card brand (cards only)
       last4: String, // last four digits (cards only, never the full number)
       account: String, // masked wallet number (bKash / Nagad)
+      currency: { type: String, default: "BDT" },
+      status: { type: String, default: "paid" },
+      payerName: String, // who paid (from the verified login)
+      payerEmail: String,
+      balanceAfter: Number, // what was still due after this payment
       paidAt: { type: Date, default: Date.now },
     },
   ],
@@ -251,6 +288,31 @@ const bookingSchema = new mongoose.Schema({
 });
 
 const Booking = mongoose.model("Booking", bookingSchema);
+
+// ---- Payment ledger ----
+// Every payment is also saved as its own document (an audit trail that survives even if a booking is
+// deleted later). Card numbers, CVC and wallet PINs are NEVER stored: only brand, last four digits and
+// a masked wallet number, exactly as on the receipt.
+const paymentSchema = new mongoose.Schema({
+  bookingId: { type: String, required: true, index: true },
+  userId: { type: String, required: true, index: true },
+  userEmail: String,
+  userName: String,
+  serviceName: String,
+  amount: { type: Number, required: true },
+  currency: { type: String, default: "BDT" },
+  method: String,
+  ref: { type: String, index: true },
+  brand: String,
+  last4: String,
+  account: String,
+  status: { type: String, default: "paid", enum: ["paid", "refunded"] },
+  paidTotalAfter: Number, // booking.paidAmount after this payment
+  balanceAfter: Number,
+  bookingStatusAfter: String,
+  paidAt: { type: Date, default: Date.now },
+});
+const Payment = mongoose.model("Payment", paymentSchema);
 
 // Cancel every booking whose 72 hours ran out without the 30% advance.
 // Runs every minute, and also at the start of the routes below (Render's free instance may have been asleep).
@@ -298,6 +360,66 @@ const pickServiceFields = (body = {}) => {
   SERVICE_FIELDS.forEach((f) => {
     if (body[f] !== undefined) out[f] = body[f];
   });
+  return out;
+};
+
+// ==================== BLOG SCHEMA ====================
+// Collection name in MongoDB: "blogs"
+const blogSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, trim: true, maxlength: 160 },
+    slug: { type: String, required: true, unique: true, index: true },
+    category: { type: String, default: "Travel Tips", trim: true, maxlength: 40 },
+    excerpt: { type: String, required: true, trim: true, maxlength: 400 },
+    body: {
+      type: [String], // one string per paragraph
+      validate: { validator: (v) => Array.isArray(v) && v.length > 0, message: "The article body is required" },
+    },
+    image: { type: String, default: "" },
+    author: { type: String, default: "Sababa Travel Desk", trim: true, maxlength: 80 },
+    tags: { type: [String], default: [] },
+    readMinutes: { type: Number, default: 3 },
+    featured: { type: Boolean, default: false }, // shown big at the top of the Travel Blog (only one at a time)
+    published: { type: Boolean, default: true, index: true }, // false = draft, hidden from the public
+    publishedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true },
+);
+const Blog = mongoose.model("Blog", blogSchema);
+
+const slugify = (t) =>
+  String(t || "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "post";
+
+const uniqueSlug = async (title, ignoreId) => {
+  const base = slugify(title);
+  let slug = base;
+  for (let i = 2; await Blog.exists({ slug, ...(ignoreId ? { _id: { $ne: ignoreId } } : {}) }); i++) slug = `${base}-${i}`;
+  return slug;
+};
+
+// accepts body as a string (paragraphs split by a blank line) or as an array of paragraphs
+const toParagraphs = (b) =>
+  (Array.isArray(b) ? b : String(b || "").split(/\n\s*\n/)).map((p) => String(p).trim()).filter(Boolean);
+
+const BLOG_FIELDS = ["title", "category", "excerpt", "image", "author", "published", "featured"];
+const pickBlogFields = (body = {}) => {
+  const out = {};
+  BLOG_FIELDS.forEach((f) => {
+    if (body[f] !== undefined) out[f] = body[f];
+  });
+  if (body.body !== undefined) {
+    out.body = toParagraphs(body.body);
+    out.readMinutes = Math.max(1, Math.round(out.body.join(" ").split(/\s+/).filter(Boolean).length / 200));
+  }
+  if (body.tags !== undefined) {
+    const list = Array.isArray(body.tags) ? body.tags : String(body.tags).split(",");
+    out.tags = list.map((t) => String(t).trim()).filter(Boolean).slice(0, 12);
+  }
   return out;
 };
 
@@ -386,6 +508,12 @@ app.post("/api/bookings", requireAuth, async (req, res) => {
       });
     }
 
+    // category, lead traveler, hotel room and flight details
+    const { fields: extras, error: extrasError } = parseExtras(req.body, { requireAll: true, tripDate: date });
+    if (extrasError) return res.status(400).json({ success: false, message: extrasError });
+    const consistency = checkConsistency({ travelers: travelerCount, ...extras });
+    if (consistency) return res.status(400).json({ success: false, message: consistency });
+
     // One active request per user per service (cancelled ones don't count)
     const existingBooking = await Booking.findOne({
       userId: req.user.uid,
@@ -415,12 +543,15 @@ app.post("/api/bookings", requireAuth, async (req, res) => {
       serviceId: String(service._id),
       serviceName: service.name,
       serviceBalance: service.balance,
+      servicePicture: service.picture,
+      serviceLocation: service.location,
       travelers: travelerCount,
       preferredDate: date,
       totalAmount: Math.round(price * travelerCount),
       phoneNumber: phone,
       address: addr,
       notes: typeof notes === "string" ? notes.trim().slice(0, 500) : undefined,
+      ...extras,
       status: "pending",
     });
     const saved = await booking.save();
@@ -482,7 +613,8 @@ app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
 
     const { fields, error } = parseBookingFields(req.body);
     if (error) return res.status(400).json({ success: false, message: error });
-    if (!Object.keys(fields).length) {
+    const hasExtras = ["category", "traveler", "hotel", "flight"].some((k) => req.body?.[k] !== undefined);
+    if (!Object.keys(fields).length && !hasExtras) {
       return res.status(400).json({ success: false, message: "Nothing to update." });
     }
     if (fields.preferredDate && daysUntilTrip(fields.preferredDate) < LOCK_DAYS) {
@@ -492,7 +624,13 @@ app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
       });
     }
 
-    Object.assign(booking, fields);
+    const tripDate = fields.preferredDate || booking.preferredDate;
+    const { fields: extras, error: extrasError } = parseExtras(req.body, { tripDate });
+    if (extrasError) return res.status(400).json({ success: false, message: extrasError });
+
+    Object.assign(booking, fields, extras);
+    const consistency = checkConsistency(booking);
+    if (consistency) return res.status(400).json({ success: false, message: consistency });
     booking.totalAmount = await totalFor(booking);
     booking.advanceAmount = advanceFor(booking.totalAmount);
     // a confirmed / awaiting-advance booking goes back to "pending" for re-approval; payments made so far are kept
@@ -598,7 +736,19 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
       { _id: booking._id, userId: req.user.uid, status: booking.status, ...paidIs(paid) },
       {
         $inc: { paidAmount: amount },
-        $push: { payments: { amount, method, ...extra, paidAt: new Date() } },
+        $push: {
+          payments: {
+            amount,
+            method,
+            ...extra,
+            currency: "BDT",
+            status: "paid",
+            payerName: (req.user.name || booking.userName || "").slice(0, 100),
+            payerEmail: req.user.email,
+            balanceAfter: balance - amount,
+            paidAt: new Date(),
+          },
+        },
       },
       { new: true },
     );
@@ -616,6 +766,27 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
           { $set: { status: "confirmed", payDeadline: null, advanceAmount: advance } },
           { new: true },
         )) || updated;
+    }
+    // ledger copy of this payment (a failure here must never undo a payment that was already counted)
+    try {
+      await Payment.create({
+        bookingId: String(updated._id),
+        userId: updated.userId,
+        userEmail: updated.userEmail,
+        userName: updated.userName,
+        serviceName: updated.serviceName,
+        amount,
+        method,
+        ref: extra.ref || undefined,
+        brand: extra.brand || undefined,
+        last4: extra.last4 || undefined,
+        account: extra.account || undefined,
+        paidTotalAfter: updated.paidAmount,
+        balanceAfter: Math.max(0, updated.totalAmount - updated.paidAmount),
+        bookingStatusAfter: updated.status,
+      });
+    } catch (e) {
+      console.error("Payment ledger error:", e.message);
     }
     res.json({ success: true, booking: updated });
   } catch (error) {
@@ -673,7 +844,8 @@ app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
     }
     const { fields, error } = parseBookingFields(req.body);
     if (error) return res.status(400).json({ success: false, message: error });
-    if (status === undefined && !Object.keys(fields).length) {
+    const hasExtras = ["category", "traveler", "hotel", "flight"].some((k) => req.body?.[k] !== undefined);
+    if (status === undefined && !Object.keys(fields).length && !hasExtras) {
       return res.status(400).json({ success: false, message: "Nothing to update." });
     }
 
@@ -685,7 +857,13 @@ app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
         .json({ success: false, message: "Booking not found" });
     }
 
-    Object.assign(booking, fields);
+    const { fields: extras, error: extrasError } = parseExtras(req.body, { tripDate: fields.preferredDate || booking.preferredDate });
+    if (extrasError) return res.status(400).json({ success: false, message: extrasError });
+    Object.assign(booking, fields, extras);
+    if (hasExtras || fields.travelers) {
+      const consistency = checkConsistency(booking);
+      if (consistency) return res.status(400).json({ success: false, message: consistency });
+    }
     if (fields.travelers) {
       booking.totalAmount = await totalFor(booking);
       if (booking.advanceAmount > 0) booking.advanceAmount = advanceFor(booking.totalAmount);
@@ -744,6 +922,31 @@ app.delete("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Failed to delete booking" });
+  }
+});
+
+// Admin: the payment ledger (every payment ever made). Optional ?bookingId=… or ?userId=…
+app.get("/api/admin/payments", requireAdmin, async (req, res) => {
+  try {
+    const q = {};
+    if (req.query.bookingId) q.bookingId = String(req.query.bookingId);
+    if (req.query.userId) q.userId = String(req.query.userId);
+    const payments = await Payment.find(q).sort({ paidAt: -1 }).limit(1000);
+    res.json(payments);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load payments" });
+  }
+});
+
+// Customer: their own payment history
+app.get("/api/payments/mine", requireAuth, async (req, res) => {
+  try {
+    const payments = await Payment.find({ userId: req.user.uid }).sort({ paidAt: -1 }).limit(500);
+    res.json(payments);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load payments" });
   }
 });
 
@@ -823,6 +1026,85 @@ app.delete("/api/admin/services/:id", requireAdmin, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Failed to delete service" });
+  }
+});
+
+// ==================== BLOG ROUTES ====================
+
+// Public: published blogs only, newest first
+app.get("/api/blogs", async (req, res) => {
+  try {
+    const blogs = await Blog.find({ published: true }).sort({ featured: -1, publishedAt: -1 }).lean();
+    res.json(blogs);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load blogs" });
+  }
+});
+
+// Public: one published blog by id or slug
+app.get("/api/blogs/:idOrSlug", async (req, res) => {
+  try {
+    const key = req.params.idOrSlug;
+    const blog = await Blog.findOne({ published: true, ...(isValidId(key) ? { _id: key } : { slug: key }) }).lean();
+    if (!blog) return res.status(404).json({ message: "Blog not found" });
+    res.json(blog);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load blog" });
+  }
+});
+
+// Admin: everything, drafts included
+app.get("/api/admin/blogs", requireAdmin, async (req, res) => {
+  try {
+    const blogs = await Blog.find().sort({ publishedAt: -1 }).lean();
+    res.json(blogs);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load blogs" });
+  }
+});
+
+app.post("/api/admin/blogs", requireAdmin, async (req, res) => {
+  try {
+    const fields = pickBlogFields(req.body);
+    fields.slug = await uniqueSlug(fields.title);
+    if (fields.featured) await Blog.updateMany({ featured: true }, { $set: { featured: false } });
+    const saved = await new Blog(fields).save();
+    res.status(201).json({ success: true, blog: saved });
+  } catch (error) {
+    const status = error.name === "ValidationError" ? 400 : 500;
+    res.status(status).json({ success: false, message: error.message });
+  }
+});
+
+app.patch("/api/admin/blogs/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) return res.status(404).json({ success: false, message: "Blog not found" });
+    const blog = await Blog.findById(req.params.id);
+    if (!blog) return res.status(404).json({ success: false, message: "Blog not found" });
+    const fields = pickBlogFields(req.body);
+    if (fields.title && fields.title !== blog.title) fields.slug = await uniqueSlug(fields.title, blog._id);
+    if (fields.featured) await Blog.updateMany({ _id: { $ne: blog._id }, featured: true }, { $set: { featured: false } });
+    blog.set(fields);
+    const saved = await blog.save();
+    res.json({ success: true, blog: saved });
+  } catch (error) {
+    const status = error.name === "ValidationError" ? 400 : 500;
+    res.status(status).json({ success: false, message: error.message });
+  }
+});
+
+app.delete("/api/admin/blogs/:id", requireAdmin, async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) return res.status(404).json({ success: false, message: "Blog not found" });
+    const deleted = await Blog.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ success: false, message: "Blog not found" });
+    res.json({ success: true, message: "Blog deleted" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Failed to delete blog" });
   }
 });
 
