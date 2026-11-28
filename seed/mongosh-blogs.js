@@ -30,7 +30,7 @@ const blogs = [
     "title": "Best time to visit Paris, Rome and Barcelona",
     "category": "Destination Guide",
     "excerpt": "A month-by-month feel for Europe's big three city breaks, from tulip-bright spring to quiet winter streets.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4b/La_Tour_Eiffel_vue_de_la_Tour_Saint-Jacques%2C_Paris_ao%C3%BBt_2014_%282%29.jpg/1280px-La_Tour_Eiffel_vue_de_la_Tour_Saint-Jacques%2C_Paris_ao%C3%BBt_2014_%282%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "paris",
       "rome",
@@ -54,7 +54,7 @@ const blogs = [
     "title": "Umrah from Bangladesh: planning a peaceful journey",
     "category": "Pilgrimage",
     "excerpt": "Practical preparation for first-time pilgrims: paperwork, stay, pace, and travelling with parents.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/89/The_Ka%27ba%2C_Great_Mosque_of_Mecca%2C_Saudi_Arabia_%284%29.jpg/1280px-The_Ka%27ba%2C_Great_Mosque_of_Mecca%2C_Saudi_Arabia_%284%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "umrah",
       "makkah",
@@ -78,7 +78,7 @@ const blogs = [
     "title": "Dubai for first-timers: a 4-day plan that works",
     "category": "Planning",
     "excerpt": "How to fit the Burj Khalifa, the desert and the old creek into a short stay without rushing.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/Burj_Khalifa_%28worlds_tallest_building%29_and_the_Dubai_skyline_%2825781049892%29.jpg/1280px-Burj_Khalifa_%28worlds_tallest_building%29_and_the_Dubai_skyline_%2825781049892%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "dubai",
       "uae",
@@ -125,7 +125,7 @@ const blogs = [
     "title": "Japan from Bangladesh: Tokyo, Fuji and Kyoto in one trip",
     "category": "Destination Guide",
     "excerpt": "A simple route that links the skyline of Tokyo, the calm of Mount Fuji and the temples of Kyoto.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f8/View_of_Mount_Fuji_from_%C5%8Cwakudani_20211202.jpg/1280px-View_of_Mount_Fuji_from_%C5%8Cwakudani_20211202.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "japan",
       "tokyo",
@@ -149,7 +149,7 @@ const blogs = [
     "title": "Bali beyond the beach: temples, rice terraces and calm mornings",
     "category": "Destination Guide",
     "excerpt": "Where to find the quiet side of the island, and how to arrange your days around the heat and the crowds.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8d/TanahLot_2014.JPG/1280px-TanahLot_2014.JPG?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "bali",
       "indonesia",
@@ -172,7 +172,7 @@ const blogs = [
     "title": "Everest Base Camp: how to prepare your body and your kit",
     "category": "Adventure",
     "excerpt": "Training, acclimatisation and packing advice for one of the world's most famous treks.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/15/Mt._Everest_from_Gokyo_Ri_November_5%2C_2012.jpg/1280px-Mt._Everest_from_Gokyo_Ri_November_5%2C_2012.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "nepal",
       "everest",
@@ -218,7 +218,7 @@ const blogs = [
     "title": "Packing once for a multi-country trip",
     "category": "Travel Tips",
     "excerpt": "A short list that works whether you are crossing Europe, Southeast Asia or the Middle East.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d7/Rucksack1.jpg/1280px-Rucksack1.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "packing",
       "tips",
@@ -241,7 +241,7 @@ const blogs = [
     "title": "Travel insurance: what to check before you fly",
     "category": "Travel Tips",
     "excerpt": "Medical cover, cancellations and baggage: the few lines worth reading in your policy.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/59/Overseas_travel_insurance_Vending_machines_in_the_Japanese_Airport.jpg/1280px-Overseas_travel_insurance_Vending_machines_in_the_Japanese_Airport.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "insurance",
       "safety",
@@ -264,7 +264,7 @@ const blogs = [
     "title": "Cappadocia and Santorini: two sunrises and sunsets worth planning for",
     "category": "Destination Guide",
     "excerpt": "Hot-air balloons at dawn and caldera views at dusk, and how to avoid disappointment.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/59/Cappadocia_balloon_trip%2C_Ortahisar_Castle_%2811893715185%29.jpg/1280px-Cappadocia_balloon_trip%2C_Ortahisar_Castle_%2811893715185%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "turkey",
       "greece",
@@ -288,7 +288,7 @@ const blogs = [
     "title": "Best time to visit Bangladesh's hill destinations",
     "category": "Travel Tips",
     "excerpt": "A practical seasonal guide for dry trails, clear views, waterfalls and comfortable road transfers.",
-    "image": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/Bandarban_City_02.jpg/1280px-Bandarban_City_02.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "image": "",
     "tags": [
       "bangladesh",
       "bandarban",
@@ -310,7 +310,7 @@ const blogs = [
     "title": "Responsible travel in local communities",
     "category": "Culture",
     "excerpt": "How to travel with curiosity and respect while supporting local guides, hosts and makers.",
-    "image": "https://upload.wikimedia.org/wikipedia/commons/a/ad/The_renowned_Kakum_National_Reserve.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+    "image": "",
     "tags": [
       "culture",
       "responsible",

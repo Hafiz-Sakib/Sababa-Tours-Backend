@@ -35,7 +35,18 @@ const MAX_TRAVELERS = 20;
 const BD_PHONE_REGEX = /^(013|014|015|016|017|018|019)\d{8}$/;
 
 // ==================== MIDDLEWARE ====================
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+// Allow the fixed list above plus any Vercel deployment/preview of this project
+const vercelOrigin = /^https:\/\/sababa-tours[a-z0-9-]*\.vercel\.app$/i;
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // no Origin header = server-to-server / curl / health pings
+      if (!origin || allowedOrigins.includes(origin) || vercelOrigin.test(origin)) return cb(null, true);
+      return cb(null, false);
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json({ limit: "100kb" }));
 
 // ==================== DATABASE CONNECTION ====================
