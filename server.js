@@ -577,6 +577,10 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
       last4: String(req.body?.last4 || "").replace(/\D/g, "").slice(-4),
       account: clean(req.body?.account, 16),
     };
+    // the same payment sent twice (double click, retry, duplicate request) must be counted once
+    if (extra.ref && (booking.payments || []).some((p) => p.ref === extra.ref)) {
+      return res.json({ success: true, booking });
+    }
     const paid = booking.paidAmount || 0;
     const balance = booking.totalAmount - paid;
     if (balance <= 0) {
