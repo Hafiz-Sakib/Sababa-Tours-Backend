@@ -110,6 +110,80 @@ const parsePrice = (balance) =>
 
 const countWords = (text) => String(text).trim().split(/\s+/).filter(Boolean).length;
 
+// ---- Customer change window ----
+// A customer may edit / cancel a booking only until LOCK_DAYS days before the trip date.
+// The admin is never limited by this. Days are counted in Bangladesh time (UTC+6), because
+// the trip date is saved as the chosen calendar day at 00:00 UTC.
+const LOCK_DAYS = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const BD_OFFSET_MS = 6 * 60 * 60 * 1000;
+const daysUntilTrip = (date) =>
+  Math.floor(new Date(date).getTime() / DAY_MS) -
+  Math.floor((Date.now() + BD_OFFSET_MS) / DAY_MS);
+const LOCK_MESSAGE = `Changes and cancellations close ${LOCK_DAYS} days before the trip. Please contact our travel desk for help.`;
+const PAST_MESSAGE =
+  "This trip date has passed, so the booking can no longer be changed.";
+const lockMessageFor = (date) =>
+  daysUntilTrip(date) < 0 ? PAST_MESSAGE : LOCK_MESSAGE;
+
+// Validates the editable booking fields. Returns { fields } or { error }.
+// Only fields that are present in the body are checked and returned.
+const parseBookingFields = (body = {}) => {
+  const fields = {};
+
+  if (body.travelers !== undefined) {
+    const n = Number(body.travelers);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_TRAVELERS) {
+      return { error: `Travelers must be between 1 and ${MAX_TRAVELERS}` };
+    }
+    fields.travelers = n;
+  }
+
+  if (body.preferredDate !== undefined) {
+    const d = new Date(body.preferredDate);
+    if (!body.preferredDate || Number.isNaN(d.getTime())) {
+      return { error: "A valid travel date is required" };
+    }
+    fields.preferredDate = d;
+  }
+
+  if (body.phoneNumber !== undefined) {
+    const phone = String(body.phoneNumber || "").trim();
+    if (!BD_PHONE_REGEX.test(phone)) {
+      return {
+        error: "Enter a valid Bangladeshi phone number (e.g. 017XXXXXXXX)",
+      };
+    }
+    fields.phoneNumber = phone;
+  }
+
+  if (body.address !== undefined) {
+    const addr = String(body.address || "").trim();
+    if (!addr) return { error: "Address is required" };
+    if (countWords(addr) > 30) {
+      return { error: "Address must not exceed 30 words" };
+    }
+    fields.address = addr;
+  }
+
+  if (body.notes !== undefined) {
+    fields.notes = typeof body.notes === "string" ? body.notes.trim().slice(0, 500) : "";
+  }
+
+  return { fields };
+};
+
+// Total = package price x travelers. Uses the price saved on the booking and
+// falls back to the live package price if that is missing.
+const totalFor = async (booking) => {
+  let price = parsePrice(booking.serviceBalance);
+  if (price <= 0 && booking.serviceId && isValidId(booking.serviceId)) {
+    const service = await Service.findById(booking.serviceId);
+    price = parsePrice(service?.balance);
+  }
+  return price > 0 ? Math.round(price * booking.travelers) : booking.totalAmount;
+};
+
 // ==================== BOOKING SCHEMA ====================
 const bookingSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
@@ -321,7 +395,52 @@ app.get("/api/bookings/user/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// Cancel your own booking (only while it is still pending)
+// Edit your own booking: until LOCK_DAYS days before the trip. A confirmed booking goes back
+// to "pending" so the admin can review the new details.
+app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid booking id" });
+    }
+    const booking = await Booking.findById(req.params.id);
+    if (!booking || booking.userId !== req.user.uid) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+    if (booking.status === "cancelled") {
+      return res
+        .status(409)
+        .json({ success: false, message: "A cancelled booking cannot be edited." });
+    }
+    if (daysUntilTrip(booking.preferredDate) < LOCK_DAYS) {
+      return res
+        .status(403)
+        .json({ success: false, message: lockMessageFor(booking.preferredDate) });
+    }
+
+    const { fields, error } = parseBookingFields(req.body);
+    if (error) return res.status(400).json({ success: false, message: error });
+    if (!Object.keys(fields).length) {
+      return res.status(400).json({ success: false, message: "Nothing to update." });
+    }
+    if (fields.preferredDate && daysUntilTrip(fields.preferredDate) < LOCK_DAYS) {
+      return res.status(400).json({
+        success: false,
+        message: `The new trip date must be at least ${LOCK_DAYS} days from today.`,
+      });
+    }
+
+    Object.assign(booking, fields);
+    booking.totalAmount = await totalFor(booking);
+    if (booking.status === "confirmed") booking.status = "pending";
+    await booking.save();
+    res.json({ success: true, booking });
+  } catch (error) {
+    console.error("Edit booking error:", error);
+    res.status(500).json({ success: false, message: "Failed to update booking" });
+  }
+});
+
+// Cancel your own booking (pending or confirmed) until LOCK_DAYS days before the trip
 app.patch("/api/bookings/:id/cancel", requireAuth, async (req, res) => {
   try {
     if (!isValidId(req.params.id)) {
@@ -336,12 +455,10 @@ app.patch("/api/bookings/:id/cancel", requireAuth, async (req, res) => {
     if (booking.status === "cancelled") {
       return res.json({ success: true, booking });
     }
-    if (booking.status !== "pending" && !req.user.isAdmin) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "This booking is already confirmed. Please contact us to change it.",
-      });
+    if (!req.user.isAdmin && daysUntilTrip(booking.preferredDate) < LOCK_DAYS) {
+      return res
+        .status(403)
+        .json({ success: false, message: lockMessageFor(booking.preferredDate) });
     }
     booking.status = "cancelled";
     await booking.save();
@@ -349,6 +466,30 @@ app.patch("/api/bookings/:id/cancel", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Cancel booking error:", error);
     res.status(500).json({ success: false, message: "Failed to cancel booking" });
+  }
+});
+
+// Delete your own booking: only after it has been cancelled
+app.delete("/api/bookings/:id", requireAuth, async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid booking id" });
+    }
+    const booking = await Booking.findById(req.params.id);
+    if (!booking || booking.userId !== req.user.uid) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+    if (booking.status !== "cancelled") {
+      return res.status(409).json({
+        success: false,
+        message: "Please cancel the booking first, then delete it.",
+      });
+    }
+    await booking.deleteOne();
+    res.json({ success: true, message: "Booking deleted" });
+  } catch (error) {
+    console.error("Delete booking error:", error);
+    res.status(500).json({ success: false, message: "Failed to delete booking" });
   }
 });
 
@@ -364,26 +505,34 @@ app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
   }
 });
 
+// Admin: change the status and/or any editable detail. No date limit for the admin.
 app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
   try {
-    const { status } = req.body || {};
-    if (!["pending", "confirmed", "cancelled"].includes(status)) {
-      return res.status(400).json({ success: false, message: "Invalid status" });
-    }
     if (!isValidId(req.params.id)) {
       return res.status(400).json({ success: false, message: "Invalid booking id" });
     }
-    const updated = await Booking.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true },
-    );
-    if (!updated) {
+    const { status } = req.body || {};
+    if (status !== undefined && !["pending", "confirmed", "cancelled"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid status" });
+    }
+    const { fields, error } = parseBookingFields(req.body);
+    if (error) return res.status(400).json({ success: false, message: error });
+    if (status === undefined && !Object.keys(fields).length) {
+      return res.status(400).json({ success: false, message: "Nothing to update." });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
       return res
         .status(404)
         .json({ success: false, message: "Booking not found" });
     }
-    res.json({ success: true, booking: updated });
+
+    Object.assign(booking, fields);
+    if (status !== undefined) booking.status = status;
+    if (fields.travelers) booking.totalAmount = await totalFor(booking);
+    await booking.save();
+    res.json({ success: true, booking });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Failed to update booking" });
