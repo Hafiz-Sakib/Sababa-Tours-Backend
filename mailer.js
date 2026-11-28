@@ -2,8 +2,11 @@
 // Booking e-mails (admin alert + customer updates).
 //
 // Render's free instance blocks SMTP ports, so mail goes out through an HTTPS API instead.
-// Pick ONE provider by setting its key in Render > Environment:
-//   BREVO_API_KEY   (recommended: free 300 mails/day, you only verify one sender address, no domain needed)
+// Pick ONE provider by setting its keys in Render > Environment (first one found wins):
+//   MAILJET_API_KEY + MAILJET_SECRET_KEY  (recommended: free 200/day, one verified sender is enough,
+//                                          and links are NOT rewritten because click tracking is switched off per mail)
+//   BREVO_API_KEY   (free 300/day, but Brevo rewrites every link through sendibt2.com and that
+//                    redirect is sometimes down; it cannot be switched off on the free plan)
 //   RESEND_API_KEY  (free 100/day, but needs a verified domain to mail customers)
 // Also set:
 //   MAIL_FROM        sender address (for Brevo: the address you verified as a sender)
@@ -27,7 +30,8 @@ const adminList = () =>
     .map((e) => e.trim())
     .filter(Boolean);
 
-const enabled = () => !!(FROM_EMAIL && (process.env.BREVO_API_KEY || process.env.RESEND_API_KEY));
+const hasMailjet = () => !!(process.env.MAILJET_API_KEY && process.env.MAILJET_SECRET_KEY);
+const enabled = () => !!(FROM_EMAIL && (hasMailjet() || process.env.BREVO_API_KEY || process.env.RESEND_API_KEY));
 
 /* ───────── formatting ───────── */
 const esc = (s) =>
@@ -58,7 +62,22 @@ async function sendMail({ to, subject, html, text }) {
       console.log(`✉️  (mail skipped: no provider configured) ${subject}`);
       return;
     }
-    if (process.env.BREVO_API_KEY) {
+    if (hasMailjet()) {
+      const auth = Buffer.from(`${process.env.MAILJET_API_KEY}:${process.env.MAILJET_SECRET_KEY}`).toString("base64");
+      await post("https://api.mailjet.com/v3.1/send", { Authorization: `Basic ${auth}` }, {
+        Messages: [
+          {
+            From: { Email: FROM_EMAIL, Name: FROM_NAME },
+            To: recipients.map((Email) => ({ Email })),
+            Subject: subject,
+            TextPart: text,
+            HTMLPart: html,
+            TrackClicks: "disabled", // keep our own links untouched
+            TrackOpens: "disabled",
+          },
+        ],
+      });
+    } else if (process.env.BREVO_API_KEY) {
       await post("https://api.brevo.com/v3/smtp/email", { "api-key": process.env.BREVO_API_KEY, accept: "application/json" }, {
         sender: { name: FROM_NAME, email: FROM_EMAIL },
         to: recipients.map((email) => ({ email })),

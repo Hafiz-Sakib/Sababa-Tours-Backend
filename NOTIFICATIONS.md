@@ -13,7 +13,19 @@ The server sends these e-mails (see `mailer.js`):
 
 Mail failures never break a booking; they are only logged.
 
-## Setup (5 minutes, free) — Brevo
+## Recommended: Mailjet (links stay clickable)
+
+Brevo rewrites every link through `sendibt2.com`, and that redirect is sometimes down ("This link is
+temporarily unavailable"). Brevo cannot turn this off on the free plan. Mailjet can, per mail.
+
+1. Create a free account at https://www.mailjet.com
+2. **Account settings → Senders & domains → Add a sender address**: use your e-mail (Gmail works) and
+   click the verification link they send you.
+3. **Account settings → REST API → API Key Management (Master API Key)**: copy the **API Key** and **Secret Key**.
+4. Render → **Environment**, add `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`, and `MAIL_FROM` (the verified sender).
+5. **Save, rebuild, and deploy**. Mailjet is used first when both Mailjet keys are set; you can leave the Brevo key in place.
+
+## Alternative: Brevo (works, but links go through Brevo's redirect)
 
 Render's free plan blocks SMTP, so mail goes through an HTTPS API.
 
