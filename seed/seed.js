@@ -1,10 +1,10 @@
-// Replace every package (service) in the database with the ones in seed/packages.json.
+// Replace every package (service) AND every booking (order) with the packages in seed/packages.json.
 //
-//   node seed/seed.js            -> dry run: checks the data, shows what would change, touches nothing
-//   node seed/seed.js --yes      -> backs up the current packages, deletes them all, inserts the new ones
+//   node seed/seed.js                 -> dry run: checks the data, shows what would change, touches nothing
+//   node seed/seed.js --yes           -> backs up packages + bookings, deletes both, inserts the new packages
+//   node seed/seed.js --yes --keep-bookings   -> same, but leaves the bookings alone
 //
 // Needs MONGO_URI in .env (same one the server uses).
-// Existing bookings are NOT touched: they keep their own saved package name and price.
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
@@ -47,21 +47,34 @@ const parsePrice = (b) => parseFloat(String(b ?? "").replace(/[^0-9.]/g, "")) ||
     process.exit(1);
   }
   await mongoose.connect(process.env.MONGO_URI);
+  const bookingsCol = mongoose.connection.db.collection("bookings");
+  const keepBookings = process.argv.includes("--keep-bookings");
   const old = await Service.find().lean();
-  console.log(`Database has ${old.length} packages now.`);
+  const oldBookings = await bookingsCol.find().toArray();
+  console.log(`Database ${mongoose.connection.name} has ${old.length} packages and ${oldBookings.length} bookings now.`);
 
   if (!apply) {
     console.log("Dry run only. Nothing was changed. Run again with --yes to replace them.");
     return;
   }
 
-  const file = path.join(__dirname, `backup-services-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const file = path.join(__dirname, `backup-services-${stamp}.json`);
   fs.writeFileSync(file, JSON.stringify(old, null, 2));
   console.log(`Backup saved: ${file}`);
+  if (!keepBookings) {
+    const bfile = path.join(__dirname, `backup-bookings-${stamp}.json`);
+    fs.writeFileSync(bfile, JSON.stringify(oldBookings, null, 2));
+    console.log(`Backup saved: ${bfile}`);
+    const delB = await bookingsCol.deleteMany({});
+    console.log(`Deleted ${delB.deletedCount} bookings.`);
+  }
 
   const del = await Service.deleteMany({});
   console.log(`Deleted ${del.deletedCount} packages.`);
-  const ins = await Service.insertMany(data);
+  // the site lists newest first: the first package in the file gets the newest time so the order stays as written
+  const base = Date.now();
+  const ins = await Service.insertMany(data.map((d, i) => ({ ...d, createdAt: new Date(base - i * 1000) })));
   console.log(`Inserted ${ins.length} new packages.`);
 })()
   .catch((e) => {

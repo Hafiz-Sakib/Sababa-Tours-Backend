@@ -133,5 +133,140 @@
     "category": "Heritage",
     "duration": "2 Days / 1 Night",
     "location": "Naogaon & Bogura"
+  },
+  {
+    "name": "Inani Beach & Himchari Day Trip",
+    "about": "Drive the Marine Drive past the rock-strewn shore of Inani and the green cliffs of Himchari, with a waterfall stop and a seafood lunch. A full day trip from Cox's Bazar town with car and guide.",
+    "balance": "BDT 3,200",
+    "picture": "https://images.unsplash.com/photo-1501963422762-3d89bd989568?auto=format&fit=crop&w=1170&q=80",
+    "category": "Beach",
+    "duration": "1 Day",
+    "location": "Cox's Bazar"
+  },
+  {
+    "name": "Nafakhum Waterfall Bandarban",
+    "about": "Take a boat on the Sangu river and hike to Nafakhum, the widest waterfall in Bangladesh. Stay with a hill village family and eat local food. Guide, boat and stay included.",
+    "balance": "BDT 5,500",
+    "picture": "https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=1170&q=80",
+    "category": "Adventure",
+    "duration": "2 Days / 1 Night",
+    "location": "Remakri, Bandarban"
+  },
+  {
+    "name": "Keokradong Hill Trek",
+    "about": "Climb to one of the highest peaks in Bangladesh through Marma and Bawm villages. A tougher trek with a local guide, night stay in a hill house and sunrise from the summit.",
+    "balance": "BDT 7,200",
+    "picture": "https://images.unsplash.com/photo-1463288889890-a56b2853c40f?auto=format&fit=crop&w=1170&q=80",
+    "category": "Adventure",
+    "duration": "3 Days / 2 Nights",
+    "location": "Ruma, Bandarban"
+  },
+  {
+    "name": "Lalakhal Blue Water Boat Ride",
+    "about": "Glide on the clear blue-green water of the Sari river between green hills. Includes boat ride, Jaflong side trip and Sylhet hotel stay.",
+    "balance": "BDT 4,200",
+    "picture": "https://images.unsplash.com/photo-1482192596544-9eb780fc7f66?auto=format&fit=crop&w=1170&q=80",
+    "category": "Nature",
+    "duration": "2 Days / 1 Night",
+    "location": "Jaintiapur, Sylhet"
+  },
+  {
+    "name": "Bisnakandi & Sripur Stone Fields",
+    "about": "Walk the stone-covered riverbank below the Meghalaya hills and cross to the clear Sripur tea garden. A relaxed day trip with lunch and local transport.",
+    "balance": "BDT 2,900",
+    "picture": "https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1170&q=80",
+    "category": "Nature",
+    "duration": "1 Day",
+    "location": "Gowainghat, Sylhet"
+  },
+  {
+    "name": "Madhabkunda Waterfall Trip",
+    "about": "Walk down to the plunge pool of the biggest waterfall in the Sylhet region. Combine it with a tea garden walk and a night at Srimangal. Transport and stay included.",
+    "balance": "BDT 4,500",
+    "picture": "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1170&q=80",
+    "category": "Nature",
+    "duration": "2 Days / 1 Night",
+    "location": "Barlekha, Moulvibazar"
+  },
+  {
+    "name": "Patenga Beach & Chattogram City",
+    "about": "Patenga sea beach, the Karnaphuli river, DC Hill and the Ethnological Museum. A city and sea mix with hotel stay, breakfast and local transport.",
+    "balance": "BDT 4,800",
+    "picture": "https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1170&q=80",
+    "category": "Beach",
+    "duration": "2 Days / 1 Night",
+    "location": "Chattogram"
+  },
+  {
+    "name": "Foy's Lake & Chattogram Hills",
+    "about": "Boat on Foy's Lake, ride the amusement park views and stop at the war cemetery and Batali Hill viewpoint. A light day for families.",
+    "balance": "BDT 2,600",
+    "picture": "https://images.unsplash.com/photo-1441580080658-9979ef8d8f82?auto=format&fit=crop&w=1170&q=80",
+    "category": "Lake & Haor",
+    "duration": "1 Day",
+    "location": "Chattogram"
+  },
+  {
+    "name": "Moheshkhali Island Escape",
+    "about": "Cross to the hill island by boat, climb to the Adinath temple and visit Matarbari and the betel leaf farms. Boat, lunch and island stay included.",
+    "balance": "BDT 5,200",
+    "picture": "https://images.unsplash.com/photo-1488085061387-422e29b40080?auto=format&fit=crop&w=1170&q=80",
+    "category": "Island",
+    "duration": "2 Days / 1 Night",
+    "location": "Moheshkhali, Cox's Bazar"
+  },
+  {
+    "name": "Sonargaon & Panam City Day Tour",
+    "about": "Walk the old brick street of Panam City and the Folk Art Museum in Sonargaon, the old capital of Bengal. Includes car from Dhaka and lunch.",
+    "balance": "BDT 2,400",
+    "picture": "https://images.unsplash.com/photo-1585082378977-6c68e2f4e7ad?auto=format&fit=crop&w=1170&q=80",
+    "category": "Heritage",
+    "duration": "1 Day",
+    "location": "Narayanganj"
+  },
+  {
+    "name": "Dhaka Memorials & Museums Day",
+    "about": "The National Martyrs' Memorial at Savar, the Liberation War Museum and the National Museum, with a guide who explains the story of 1971. Car and lunch included.",
+    "balance": "BDT 2,000",
+    "picture": "https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=1170&q=80",
+    "category": "Heritage",
+    "duration": "1 Day",
+    "location": "Dhaka & Savar"
+  },
+  {
+    "name": "Puthia Temple & Natore Rajbari",
+    "about": "See the terracotta temples of Puthia and the Natore palace, then rest on the Padma bank at Rajshahi. Hotel and transport included.",
+    "balance": "BDT 4,600",
+    "picture": "https://images.unsplash.com/photo-1580181288416-f9ab56f0f5cd?auto=format&fit=crop&w=1170&q=80",
+    "category": "Heritage",
+    "duration": "2 Days / 1 Night",
+    "location": "Rajshahi & Natore"
+  },
+  {
+    "name": "Kantajew Temple & Dinajpur",
+    "about": "Visit the finely carved Kantajew Temple, the Ramsagar lake and Dinajpur's old rajbari. A quiet northern route with local lunch and hotel stay.",
+    "balance": "BDT 4,400",
+    "picture": "https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=1170&q=80",
+    "category": "Heritage",
+    "duration": "2 Days / 1 Night",
+    "location": "Dinajpur"
+  },
+  {
+    "name": "Mainamati & Comilla Kotila Mura",
+    "about": "Explore the Buddhist ruins of Mainamati and Kotila Mura, then stop at the Comilla war cemetery and the famous Matri Bhandar sweets. Car and lunch included.",
+    "balance": "BDT 2,700",
+    "picture": "https://images.unsplash.com/photo-1519895709776-a1a985f3f8be?auto=format&fit=crop&w=1170&q=80",
+    "category": "Heritage",
+    "duration": "1 Day",
+    "location": "Cumilla"
+  },
+  {
+    "name": "Chimbuk Hill Sunrise Trip",
+    "about": "Watch the sun rise above the clouds from the Chimbuk viewpoint, then visit Thanchi and Shoilo Propat. Jeep ride, stay and a local guide are included.",
+    "balance": "BDT 5,000",
+    "picture": "https://images.unsplash.com/photo-1458668383970-8ddd3927deed?auto=format&fit=crop&w=1170&q=80",
+    "category": "Hill",
+    "duration": "2 Days / 1 Night",
+    "location": "Bandarban"
   }
 ]
