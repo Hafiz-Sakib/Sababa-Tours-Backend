@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const { createRemoteJWKSet, jwtVerify } = require("jose");
 require("dotenv").config();
+const mail = require("./mailer");
 const { parseExtras, checkConsistency, CATEGORIES, ROOM_TYPES, BED_TYPES, MEAL_PLANS, FLIGHT_MODES, CABINS } = require("./extras");
 
 const app = express();
@@ -152,7 +153,7 @@ const ADVANCE_PERCENT = 30;
 const HOLD_HOURS = 72;
 // true  = advance is asked only when that trip date is still free in the schedule
 // false = advance is asked on every confirmation
-const ADVANCE_ONLY_WHEN_SCHEDULE_FREE = true;
+const ADVANCE_ONLY_WHEN_SCHEDULE_FREE = false;
 const PAY_METHODS = ["bKash", "Nagad", "Bank", "Card"];
 
 const advanceFor = (total) => Math.ceil((Number(total) * ADVANCE_PERCENT) / 100);
@@ -282,6 +283,7 @@ const bookingSchema = new mongoose.Schema({
   advanceAmount: { type: Number, default: 0 },
   confirmedAt: Date,
   payDeadline: Date, // confirmedAt + 72 h, cleared once the advance is paid
+  reminderSent: { type: Boolean, default: false }, // the "24 h left" e-mail went out
   cancelReason: String, // "advance_not_paid" | "customer" | "admin"
   paidAmount: { type: Number, default: 0 },
   payments: [
@@ -331,18 +333,34 @@ const paymentSchema = new mongoose.Schema({
 });
 const Payment = mongoose.model("Payment", paymentSchema);
 
-// Cancel every booking whose 72 hours ran out without the 30% advance.
+// Cancel every booking whose 72 hours ran out without the 30% advance, and send the "24 h left" reminder.
 // Runs every minute, and also at the start of the routes below (Render's free instance may have been asleep).
+// Every change is a guarded findOneAndUpdate, so even if two sweeps overlap each mail goes out only once.
+const advanceUnpaid = { $expr: { $lt: [{ $ifNull: ["$paidAmount", 0] }, "$advanceAmount"] } };
 const sweepExpired = async () => {
   try {
-    await Booking.updateMany(
-      {
-        status: "awaiting_payment",
-        payDeadline: { $lte: new Date() },
-        $expr: { $lt: [{ $ifNull: ["$paidAmount", 0] }, "$advanceAmount"] },
-      },
-      { $set: { status: "cancelled", cancelReason: "advance_not_paid", payDeadline: null } },
-    );
+    const now = new Date();
+
+    const expired = await Booking.find({ status: "awaiting_payment", payDeadline: { $lte: now }, ...advanceUnpaid }).select("_id");
+    for (const { _id } of expired) {
+      const done = await Booking.findOneAndUpdate(
+        { _id, status: "awaiting_payment", payDeadline: { $lte: now }, ...advanceUnpaid },
+        { $set: { status: "cancelled", cancelReason: "advance_not_paid", payDeadline: null } },
+        { new: true },
+      );
+      if (done) mail.cancelled(done);
+    }
+
+    const soon = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const due = await Booking.find({ status: "awaiting_payment", reminderSent: { $ne: true }, payDeadline: { $gt: now, $lte: soon }, ...advanceUnpaid }).select("_id");
+    for (const { _id } of due) {
+      const done = await Booking.findOneAndUpdate(
+        { _id, status: "awaiting_payment", reminderSent: { $ne: true } },
+        { $set: { reminderSent: true } },
+        { new: true },
+      );
+      if (done) mail.reminder(done);
+    }
   } catch (e) {
     console.error("Sweep error:", e.message);
   }
@@ -440,6 +458,31 @@ const pickBlogFields = (body = {}) => {
   return out;
 };
 
+// ==================== RATE LIMIT (tiny, in memory, no extra package) ====================
+// Stops one account from spamming requests. Counts per logged-in user (falls back to IP).
+const rateLimit = ({ windowMs, max, message }) => {
+  const hits = new Map();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of hits) if (v.reset <= now) hits.delete(k);
+  }, 5 * 60 * 1000).unref();
+  return (req, res, next) => {
+    const key = req.user?.uid || req.ip;
+    const now = Date.now();
+    let h = hits.get(key);
+    if (!h || h.reset <= now) h = { count: 0, reset: now + windowMs };
+    h.count += 1;
+    hits.set(key, h);
+    if (h.count > max) {
+      res.set("Retry-After", String(Math.ceil((h.reset - now) / 1000)));
+      return res.status(429).json({ success: false, message: message || "Too many requests. Please try again later." });
+    }
+    next();
+  };
+};
+const bookingLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: "Too many booking requests. Please try again in an hour or call our desk." });
+const changeLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 30, message: "Too many changes in a short time. Please try again later." });
+
 // ==================== HEALTH CHECK ====================
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -454,7 +497,7 @@ app.get("/health", (req, res) => {
 
 // Create booking — only logged-in users. Price/service data come from the DB,
 // identity comes from the verified token (never from the request body).
-app.post("/api/bookings", requireAuth, async (req, res) => {
+app.post("/api/bookings", requireAuth, bookingLimiter, async (req, res) => {
   try {
     const { serviceId, travelers, preferredDate, phoneNumber, address, notes } =
       req.body || {};
@@ -572,6 +615,7 @@ app.post("/api/bookings", requireAuth, async (req, res) => {
       status: "pending",
     });
     const saved = await booking.save();
+    mail.newRequest(saved);
 
     res.status(201).json({
       success: true,
@@ -608,7 +652,7 @@ app.get("/api/bookings/user/:userId", requireAuth, async (req, res) => {
 
 // Edit your own booking: until LOCK_DAYS days before the trip. A confirmed booking goes back
 // to "pending" so the admin can review the new details.
-app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
+app.patch("/api/bookings/:id", requireAuth, changeLimiter, async (req, res) => {
   try {
     if (!isValidId(req.params.id)) {
       return res.status(400).json({ success: false, message: "Invalid booking id" });
@@ -656,6 +700,7 @@ app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
       booking.payDeadline = null;
     }
     await booking.save();
+    mail.customerEdited(booking);
     res.json({ success: true, booking });
   } catch (error) {
     console.error("Edit booking error:", error);
@@ -664,7 +709,7 @@ app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
 });
 
 // Cancel your own booking (pending or confirmed) until LOCK_DAYS days before the trip
-app.patch("/api/bookings/:id/cancel", requireAuth, async (req, res) => {
+app.patch("/api/bookings/:id/cancel", requireAuth, changeLimiter, async (req, res) => {
   try {
     if (!isValidId(req.params.id)) {
       return res.status(400).json({ success: false, message: "Invalid booking id" });
@@ -687,6 +732,7 @@ app.patch("/api/bookings/:id/cancel", requireAuth, async (req, res) => {
     booking.payDeadline = null;
     booking.cancelReason = req.user.isAdmin && booking.userId !== req.user.uid ? "admin" : "customer";
     await booking.save(); // paidAmount / payments stay on the record so a refund can be arranged
+    if (booking.cancelReason === "customer") mail.customerCancelled(booking);
     res.json({ success: true, booking });
   } catch (error) {
     console.error("Cancel booking error:", error);
@@ -776,6 +822,7 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
     }
 
     const advance = updated.advanceAmount > 0 ? updated.advanceAmount : advanceFor(updated.totalAmount);
+    const wasAwaiting = updated.status === "awaiting_payment";
     if (updated.status === "awaiting_payment" && updated.paidAmount >= advance) {
       updated =
         (await Booking.findOneAndUpdate(
@@ -784,6 +831,7 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
           { new: true },
         )) || updated;
     }
+    if (wasAwaiting && updated.status === "confirmed") mail.confirmed(updated);
     // ledger copy of this payment (a failure here must never undo a payment that was already counted)
     try {
       await Payment.create({
@@ -873,6 +921,7 @@ app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
         .status(404)
         .json({ success: false, message: "Booking not found" });
     }
+    const prevStatus = booking.status;
 
     const { fields: extras, error: extrasError } = parseExtras(req.body, { tripDate: fields.preferredDate || booking.preferredDate });
     if (extrasError) return res.status(400).json({ success: false, message: extrasError });
@@ -904,6 +953,7 @@ app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
         booking.advanceRequired = true;
         booking.confirmedAt = new Date();
         booking.payDeadline = new Date(Date.now() + HOLD_HOURS * 60 * 60 * 1000);
+        booking.reminderSent = false;
       } else {
         booking.status = "confirmed";
         booking.advanceRequired = false;
@@ -917,6 +967,12 @@ app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
     }
 
     await booking.save();
+    if (status === "confirmed") {
+      if (booking.status === "awaiting_payment") mail.awaitingPayment(booking);
+      else if (booking.status === "confirmed") mail.confirmed(booking);
+    } else if (status === "cancelled" && prevStatus !== "cancelled") {
+      mail.cancelled(booking);
+    }
     res.json({ success: true, booking });
   } catch (error) {
     console.error(error);
@@ -964,6 +1020,24 @@ app.get("/api/payments/mine", requireAuth, async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to load payments" });
+  }
+});
+
+// Public: which calendar days already have a confirmed / awaiting-payment trip. Dates only, no personal data.
+// Used by the booking calendar to mark busy days. Trip dates are stored as the chosen day at 00:00 UTC.
+app.get("/api/schedule/busy", async (req, res) => {
+  try {
+    const from = new Date(Date.now() - DAY_MS);
+    const rows = await Booking.find({
+      status: { $in: ["confirmed", "awaiting_payment"] },
+      preferredDate: { $gte: from },
+    }).select("preferredDate -_id");
+    const days = [...new Set(rows.map((r) => new Date(r.preferredDate).toISOString().slice(0, 10)))].sort();
+    res.set("Cache-Control", "public, max-age=60");
+    res.json({ days });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load schedule" });
   }
 });
 
