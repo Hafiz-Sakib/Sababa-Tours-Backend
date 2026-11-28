@@ -126,6 +126,31 @@ const PAST_MESSAGE =
 const lockMessageFor = (date) =>
   daysUntilTrip(date) < 0 ? PAST_MESSAGE : LOCK_MESSAGE;
 
+// ---- Advance payment ----
+// Admin confirms a booking -> the client must pay a 30% advance within 72 hours (status "awaiting_payment").
+// Advance paid -> "confirmed" automatically. Not paid in time -> auto-cancelled (see sweepExpired).
+// Payments are marked paid immediately (no manual verification).
+const ADVANCE_PERCENT = 30;
+const HOLD_HOURS = 72;
+// true  = advance is asked only when that trip date is still free in the schedule
+// false = advance is asked on every confirmation
+const ADVANCE_ONLY_WHEN_SCHEDULE_FREE = true;
+const PAY_METHODS = ["bKash", "Nagad", "Card"];
+
+const advanceFor = (total) => Math.ceil((Number(total) * ADVANCE_PERCENT) / 100);
+
+// trip dates are saved as the chosen calendar day at 00:00 UTC
+const dayRange = (date) => {
+  const start = Math.floor(new Date(date).getTime() / DAY_MS) * DAY_MS;
+  return { $gte: new Date(start), $lt: new Date(start + DAY_MS) };
+};
+
+// match a booking by its paidAmount even when old documents have no paidAmount field yet
+const paidIs = (paid) =>
+  paid === 0
+    ? { $or: [{ paidAmount: 0 }, { paidAmount: { $exists: false } }] }
+    : { paidAmount: paid };
+
 // Validates the editable booking fields. Returns { fields } or { error }.
 // Only fields that are present in the body are checked and returned.
 const parseBookingFields = (body = {}) => {
@@ -201,12 +226,45 @@ const bookingSchema = new mongoose.Schema({
   status: {
     type: String,
     default: "pending",
-    enum: ["pending", "confirmed", "cancelled"],
+    enum: ["pending", "awaiting_payment", "confirmed", "cancelled"],
   },
+  // advance / billing
+  advanceRequired: { type: Boolean, default: false },
+  advanceAmount: { type: Number, default: 0 },
+  confirmedAt: Date,
+  payDeadline: Date, // confirmedAt + 72 h, cleared once the advance is paid
+  cancelReason: String, // "advance_not_paid" | "customer" | "admin"
+  paidAmount: { type: Number, default: 0 },
+  payments: [
+    {
+      amount: { type: Number, required: true },
+      method: String,
+      paidAt: { type: Date, default: Date.now },
+    },
+  ],
+  invoiceNo: String,
   createdAt: { type: Date, default: Date.now },
 });
 
 const Booking = mongoose.model("Booking", bookingSchema);
+
+// Cancel every booking whose 72 hours ran out without the 30% advance.
+// Runs every minute, and also at the start of the routes below (Render's free instance may have been asleep).
+const sweepExpired = async () => {
+  try {
+    await Booking.updateMany(
+      {
+        status: "awaiting_payment",
+        payDeadline: { $lte: new Date() },
+        $expr: { $lt: [{ $ifNull: ["$paidAmount", 0] }, "$advanceAmount"] },
+      },
+      { $set: { status: "cancelled", cancelReason: "advance_not_paid", payDeadline: null } },
+    );
+  } catch (e) {
+    console.error("Sweep error:", e.message);
+  }
+};
+setInterval(sweepExpired, 60 * 1000);
 
 // ==================== SERVICE SCHEMA ====================
 const serviceSchema = new mongoose.Schema({
@@ -385,6 +443,7 @@ app.get("/api/bookings/user/:userId", requireAuth, async (req, res) => {
         .status(403)
         .json({ success: false, message: "You can only view your own bookings." });
     }
+    await sweepExpired();
     const bookings = await Booking.find({ userId: req.params.userId }).sort({
       createdAt: -1,
     });
@@ -431,7 +490,12 @@ app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
 
     Object.assign(booking, fields);
     booking.totalAmount = await totalFor(booking);
-    if (booking.status === "confirmed") booking.status = "pending";
+    booking.advanceAmount = advanceFor(booking.totalAmount);
+    // a confirmed / awaiting-advance booking goes back to "pending" for re-approval; payments made so far are kept
+    if (booking.status === "confirmed" || booking.status === "awaiting_payment") {
+      booking.status = "pending";
+      booking.payDeadline = null;
+    }
     await booking.save();
     res.json({ success: true, booking });
   } catch (error) {
@@ -461,11 +525,86 @@ app.patch("/api/bookings/:id/cancel", requireAuth, async (req, res) => {
         .json({ success: false, message: lockMessageFor(booking.preferredDate) });
     }
     booking.status = "cancelled";
-    await booking.save();
+    booking.payDeadline = null;
+    booking.cancelReason = req.user.isAdmin && booking.userId !== req.user.uid ? "admin" : "customer";
+    await booking.save(); // paidAmount / payments stay on the record so a refund can be arranged
     res.json({ success: true, booking });
   } catch (error) {
     console.error("Cancel booking error:", error);
     res.status(500).json({ success: false, message: "Failed to cancel booking" });
+  }
+});
+
+// Pay for your own booking. Any whole amount from 1 up to the balance; marked paid immediately.
+// While "awaiting_payment": once the total paid reaches the 30% advance the booking becomes "confirmed" by itself.
+app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
+  try {
+    await sweepExpired();
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid booking id" });
+    }
+    const booking = await Booking.findById(req.params.id);
+    if (!booking || booking.userId !== req.user.uid) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+    if (booking.status === "cancelled") {
+      return res.status(409).json({
+        success: false,
+        message:
+          booking.cancelReason === "advance_not_paid"
+            ? `The ${ADVANCE_PERCENT}% advance was not paid within ${HOLD_HOURS} hours, so this booking was cancelled.`
+            : "This booking is cancelled, so it cannot be paid.",
+      });
+    }
+    if (booking.status === "pending") {
+      return res.status(409).json({
+        success: false,
+        message: "You can pay once our team approves this booking.",
+      });
+    }
+
+    const amount = Number(req.body?.amount);
+    const method = PAY_METHODS.includes(req.body?.method) ? req.body.method : "Online";
+    const paid = booking.paidAmount || 0;
+    const balance = booking.totalAmount - paid;
+    if (balance <= 0) {
+      return res.status(409).json({ success: false, message: "This booking is already paid in full." });
+    }
+    if (!Number.isInteger(amount) || amount < 1 || amount > balance) {
+      return res.status(400).json({
+        success: false,
+        message: `Enter a whole amount between 1 and ${balance}.`,
+      });
+    }
+
+    // atomic: only applies if nobody paid / cancelled in between
+    let updated = await Booking.findOneAndUpdate(
+      { _id: booking._id, userId: req.user.uid, status: booking.status, ...paidIs(paid) },
+      {
+        $inc: { paidAmount: amount },
+        $push: { payments: { amount, method, paidAt: new Date() } },
+      },
+      { new: true },
+    );
+    if (!updated) {
+      return res
+        .status(409)
+        .json({ success: false, message: "The booking changed. Please refresh and try again." });
+    }
+
+    const advance = updated.advanceAmount > 0 ? updated.advanceAmount : advanceFor(updated.totalAmount);
+    if (updated.status === "awaiting_payment" && updated.paidAmount >= advance) {
+      updated =
+        (await Booking.findOneAndUpdate(
+          { _id: updated._id, status: "awaiting_payment" },
+          { $set: { status: "confirmed", payDeadline: null, advanceAmount: advance } },
+          { new: true },
+        )) || updated;
+    }
+    res.json({ success: true, booking: updated });
+  } catch (error) {
+    console.error("Pay booking error:", error);
+    res.status(500).json({ success: false, message: "Payment failed. Please try again." });
   }
 });
 
@@ -497,6 +636,7 @@ app.delete("/api/bookings/:id", requireAuth, async (req, res) => {
 
 app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
   try {
+    await sweepExpired();
     const bookings = await Booking.find().sort({ createdAt: -1 });
     res.json(bookings);
   } catch (error) {
@@ -521,6 +661,7 @@ app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Nothing to update." });
     }
 
+    await sweepExpired(); // before loading, so an expired booking is not revived by a stale copy
     const booking = await Booking.findById(req.params.id);
     if (!booking) {
       return res
@@ -529,8 +670,41 @@ app.patch("/api/admin/bookings/:id", requireAdmin, async (req, res) => {
     }
 
     Object.assign(booking, fields);
-    if (status !== undefined) booking.status = status;
-    if (fields.travelers) booking.totalAmount = await totalFor(booking);
+    if (fields.travelers) {
+      booking.totalAmount = await totalFor(booking);
+      if (booking.advanceAmount > 0) booking.advanceAmount = advanceFor(booking.totalAmount);
+    }
+
+    if (status === "confirmed") {
+      if (booking.status === "confirmed" || booking.status === "awaiting_payment") {
+        return res.status(409).json({ success: false, message: "This booking is already confirmed." });
+      }
+      // Is the trip date still free in the schedule?
+      const busy = await Booking.exists({
+        _id: { $ne: booking._id },
+        status: { $in: ["confirmed", "awaiting_payment"] },
+        preferredDate: dayRange(booking.preferredDate),
+      });
+      const needAdvance = !ADVANCE_ONLY_WHEN_SCHEDULE_FREE || !busy;
+      booking.advanceAmount = advanceFor(booking.totalAmount);
+      booking.cancelReason = undefined;
+      if (needAdvance && (booking.paidAmount || 0) < booking.advanceAmount) {
+        booking.status = "awaiting_payment";
+        booking.advanceRequired = true;
+        booking.confirmedAt = new Date();
+        booking.payDeadline = new Date(Date.now() + HOLD_HOURS * 60 * 60 * 1000);
+      } else {
+        booking.status = "confirmed";
+        booking.advanceRequired = false;
+        booking.confirmedAt = new Date();
+        booking.payDeadline = null;
+      }
+    } else if (status !== undefined) {
+      booking.status = status;
+      booking.payDeadline = null;
+      if (status === "cancelled") booking.cancelReason = "admin";
+    }
+
     await booking.save();
     res.json({ success: true, booking });
   } catch (error) {
