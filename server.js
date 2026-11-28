@@ -50,10 +50,16 @@ app.use(
 app.use(express.json({ limit: "100kb" }));
 
 // ==================== DATABASE CONNECTION ====================
+if (!process.env.MONGO_URI) {
+  console.error("❌ MONGO_URI is NOT set. Add it in Render > Environment.");
+}
 mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected Successfully"))
-  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+  .connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000 })
+  .then(() => console.log(`✅ MongoDB Connected Successfully (db: ${mongoose.connection.name})`))
+  .catch((err) => {
+    // name + message tell the cause: bad auth / IP not allowed (Atlas Network Access) / bad URI
+    console.error(`❌ MongoDB Connection Error [${err.name}]: ${err.message}`);
+  });
 
 // ==================== AUTH (Firebase ID token verification) ====================
 // No service-account secret needed: Firebase ID tokens are verified against
