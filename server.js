@@ -580,7 +580,7 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
     const paid = booking.paidAmount || 0;
     const balance = booking.totalAmount - paid;
     if (balance <= 0) {
-      return res.status(409).json({ success: false, message: "This booking is already paid in full." });
+      return res.status(409).json({ success: false, message: "This booking is already paid in full.", booking });
     }
     if (!Number.isInteger(amount) || amount < 1 || amount > balance) {
       return res.status(400).json({
@@ -601,7 +601,7 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
     if (!updated) {
       return res
         .status(409)
-        .json({ success: false, message: "The booking changed. Please refresh and try again." });
+        .json({ success: false, message: "The booking changed. Please refresh and try again.", booking: (await Booking.findById(booking._id)) || undefined });
     }
 
     const advance = updated.advanceAmount > 0 ? updated.advanceAmount : advanceFor(updated.totalAmount);
