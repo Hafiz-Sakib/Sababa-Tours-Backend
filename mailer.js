@@ -95,6 +95,7 @@ const layout = ({ title, intro, rows = [], note = "", button }) => `<!doctype ht
       ${rows.length ? `<table style="width:100%;border-collapse:collapse;border-top:1px solid #eaecf0;border-bottom:1px solid #eaecf0;margin:8px 0 16px">${rows.join("")}</table>` : ""}
       ${note ? `<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#475467">${note}</p>` : ""}
       ${button ? `<a href="${esc(button.href)}" style="display:inline-block;background:#1f8a84;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 22px;border-radius:999px">${esc(button.label)}</a>` : ""}
+      ${button ? `<p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:#667085">Button not working? Copy this link into your browser:<br>${esc(button.href)}</p>` : ""}
     </div>
   </div>
   <p style="text-align:center;font-size:12px;color:#667085;margin:14px 0 0">Questions? Call or WhatsApp our desk: ${DESK_PHONE}</p>
