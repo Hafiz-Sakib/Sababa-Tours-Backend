@@ -9,6 +9,7 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
+const { resolveImages } = require("./resolve-images");
 
 const serviceSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -26,7 +27,9 @@ const parsePrice = (b) => parseFloat(String(b ?? "").replace(/[^0-9.]/g, "")) ||
 
 (async () => {
   const apply = process.argv.includes("--yes");
-  const data = JSON.parse(fs.readFileSync(path.join(__dirname, "packages.json"), "utf8"));
+  // fills any empty "picture" with a real photo of the place (Wikipedia / Wikimedia Commons), then reloads the file
+  await resolveImages();
+  const data = JSON.parse(fs.readFileSync(path.join(__dirname, "packages.json"), "utf8")).map(({ wiki, query, ...d }) => d);
 
   // validate every package first
   const docs = data.map((d) => new Service(d));
