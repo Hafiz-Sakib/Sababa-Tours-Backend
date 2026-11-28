@@ -1,15 +1,35 @@
 name: Keep Render Awake
 
+# Render's free web service sleeps after ~15 minutes without traffic.
+# This cron pings the API every 5 minutes so it stays awake (GitHub may delay a run by a few minutes).
 on:
   schedule:
-    - cron: "*/10 * * * *" # every 10 minutes (GitHub may delay it a bit)
-  workflow_dispatch: # manual run from the Actions tab
+    - cron: "*/5 * * * *"
+  workflow_dispatch: # run it by hand from the Actions tab to test
+
+# never let two pings overlap
+concurrency:
+  group: keep-render-awake
+  cancel-in-progress: true
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://sababa-tours-backend.onrender.com
     steps:
-      - name: Ping backend /health
+      - name: Wake the server (/health)
         run: |
-          curl -fsS --retry 3 --retry-delay 10 --max-time 90 \
-            https://sababa-tours-backend.onrender.com/health
+          # a sleeping instance can take ~60 s to answer, so allow long waits and retry
+          for i in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$BASE_URL/health" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 15
+          done
+          echo "Server did not answer with 200" && exit 1
+
+      - name: Warm the database connection (/api/services)
+        run: |
+          curl -s -o /dev/null -w "services -> HTTP %{http_code} in %{time_total}s\n" --max-time 60 "$BASE_URL/api/services" || true

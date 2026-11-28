@@ -16,7 +16,7 @@ REST API for the [Sababa Tours](https://sababa-tours.vercel.app/) travel platfor
 - 💳 **Payments:** pay any whole amount up to the balance; marked paid immediately (demo gateway). Receipt details (transaction id, card brand, last four, masked wallet number) are stored on each payment — never full card numbers
 - ⏱️ **Advance rule:** admin confirms a booking on a free date → 30% advance due in 72 h, otherwise it **auto-cancels**
 - 🔒 **Change window:** customers can edit or cancel only until 5 days before the trip
-- ❤️ `/health` endpoint plus a GitHub Action that keeps a free Render instance awake
+- ❤️ `/health` endpoint plus a GitHub Action (`keep-alive.yml`) that pings the API every 5 minutes so a free Render instance stays awake
 
 ---
 
@@ -161,7 +161,7 @@ Sababa-Tours-Backend-main/
 ├── assets/homepage.png         # README screenshot
 ├── SETUP.txt                   # notes for hidden files on GitHub uploads
 └── .github/workflows/
-    └── keep-alive.yml          # pings /health every 10 minutes
+    └── keep-alive.yml          # pings /health every 5 minutes
 ```
 
 ---
@@ -172,7 +172,7 @@ Sababa-Tours-Backend-main/
 2. Add `MONGO_URI` (and optionally `FIREBASE_PROJECT_ID`, `ADMIN_EMAILS`, `CORS_ORIGINS`) in **Environment**.
 3. Allow Render's IPs in MongoDB Atlas network access.
 4. Point the frontend's production URL (`src/config.js`) to your service.
-5. Free Render instances sleep when idle: the included GitHub Action calls `/health` every 10 minutes, and expired bookings are also swept on each booking list / pay request.
+5. Free Render instances sleep when idle: the included GitHub Action calls `/health` every 5 minutes (GitHub may delay a run; it can also pause scheduled workflows after 60 days without repo activity, so re-enable it in the **Actions** tab if that happens), and expired bookings are also swept on each booking list / pay request.
 
 ---
 
