@@ -239,6 +239,10 @@ const bookingSchema = new mongoose.Schema({
     {
       amount: { type: Number, required: true },
       method: String,
+      ref: String, // transaction id shown on the receipt
+      brand: String, // card brand (cards only)
+      last4: String, // last four digits (cards only, never the full number)
+      account: String, // masked wallet number (bKash / Nagad)
       paidAt: { type: Date, default: Date.now },
     },
   ],
@@ -565,6 +569,14 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
 
     const amount = Number(req.body?.amount);
     const method = PAY_METHODS.includes(req.body?.method) ? req.body.method : "Online";
+    // optional receipt details sent by the checkout (sanitised, never full card numbers)
+    const clean = (v, max) => String(v || "").replace(/[^\w •*-]/g, "").slice(0, max);
+    const extra = {
+      ref: clean(req.body?.ref, 24),
+      brand: clean(req.body?.brand, 12),
+      last4: String(req.body?.last4 || "").replace(/\D/g, "").slice(-4),
+      account: clean(req.body?.account, 16),
+    };
     const paid = booking.paidAmount || 0;
     const balance = booking.totalAmount - paid;
     if (balance <= 0) {
@@ -582,7 +594,7 @@ app.post("/api/bookings/:id/pay", requireAuth, async (req, res) => {
       { _id: booking._id, userId: req.user.uid, status: booking.status, ...paidIs(paid) },
       {
         $inc: { paidAmount: amount },
-        $push: { payments: { amount, method, paidAt: new Date() } },
+        $push: { payments: { amount, method, ...extra, paidAt: new Date() } },
       },
       { new: true },
     );
